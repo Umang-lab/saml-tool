@@ -1,0 +1,222 @@
+c<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Keep existing head content -->
+    <!-- Add pretty print styles -->
+    <style>
+        .pretty-print-btn {
+            position: absolute;
+            right: 1rem;
+            top: 0.5rem;
+            z-index: 10;
+        }
+        .metadata-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        .metadata-section h4 {
+            border-bottom: 2px solid #dee2e6;
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .xml-tag { color: #2f6f9f; }
+        .xml-attr { color: #4f9fcf; }
+        .xml-text { color: #d44950; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <!-- Existing body content remains same until metadata section -->
+    
+    <!-- Updated Metadata Section -->
+    <section class="card mb-10">
+        <h2 class="section-heading">
+            <span class="lucide text-blue-600">&#xe905;</span> Parse Metadata
+        </h2>
+        <form id="metadataForm">
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Select Metadata Type:</label>
+                <div class="flex gap-4">
+                    <label class="flex items-center">
+                        <input type="radio" name="metadataType" value="sp" checked 
+                               class="mr-2"> Service Provider (SP)
+                    </label>
+                    <label class="flex items-center">
+                        <input type="radio" name="metadataType" value="idp"
+                               class="mr-2"> Identity Provider (IdP)
+                    </label>
+                </div>
+            </div>
+            <!-- Rest of metadata form remains same -->
+        </form>
+    </section>
+
+    <!-- Updated Results Section -->
+    <section id="resultsSection" class="card hidden">
+        <div class="relative">
+            <button onclick="togglePrettyPrint()" 
+                    class="pretty-print-btn primary-button">
+                <span class="lucide">&#xea0d;</span> Toggle Pretty Print
+            </button>
+            <!-- Rest of results section -->
+        </div>
+    </section>
+
+    <script>
+        // Add pretty print functionality
+        let isPrettyPrinted = false;
+
+        function formatXML(xml) {
+            try {
+                const xmlDoc = new DOMParser().parseFromString(xml, 'text/xml');
+                const serializer = new XMLSerializer();
+                let formatted = serializer.serializeToString(xmlDoc);
+                
+                formatted = formatted
+                    .replace(/</g, '\n<')
+                    .replace(/>/g, '>\n')
+                    .replace(/\n\n/g, '\n')
+                    .split('\n')
+                    .map(line => {
+                        const indent = Math.max(0, line.match(/<\//) ? 0 : (line.match(/</g) || []).length - 1;
+                        return '  '.repeat(indent) + line.trim();
+                    })
+                    .join('\n');
+
+                return formatted.replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;')
+                                .replace(/(&lt;\/?[\w:-]+)/g, '<span class="xml-tag">$1</span>')
+                                .replace/(\s[\w:-]+=)/g, '<span class="xml-attr">$1</span>')
+                                .replace(/&gt;([^&lt;]+)&lt;/g, '&gt;<span class="xml-text">$1</span>&lt;');
+            } catch(e) {
+                return xml.replace(/</g, '\n&lt;').replace(/>/g, '&gt;\n');
+            }
+        }
+
+        function togglePrettyPrint() {
+            const preElements = document.querySelectorAll('pre');
+            preElements.forEach(pre => {
+                if(isPrettyPrinted) {
+                    pre.innerHTML = escapeHtml(pre.dataset.original);
+                } else {
+                    pre.dataset.original = pre.textContent;
+                    pre.innerHTML = formatXML(pre.textContent);
+                }
+            });
+            isPrettyPrinted = !isPrettyPrinted;
+        }
+
+        // Update Metadata Processing
+        function processMetadata(entityDescriptor, metadataType) {
+            const data = { sp: {}, idp: {} };
+
+            const processSection = (descriptor, type) => {
+                const section = {};
+                section.descriptor_type = descriptor.tagName;
+                
+                section.endpoints = {
+                    acs: Array.from(descriptor.getElementsByTagNameNS(NAMESPACES.md, 'AssertionConsumerService')).map(acs => ({
+                        Binding: acs.getAttribute('Binding'),
+                        Location: acs.getAttribute('Location')
+                    })),
+                    slo: Array.from(descriptor.getElementsByTagNameNS(NAMESPACES.md, 'SingleLogoutService')).map(slo => ({
+                        Binding: slo.getAttribute('Binding'),
+                        Location: slo.getAttribute('Location')
+                    }))
+                };
+
+                section.certificates = Array.from(descriptor.getElementsByTagNameNS(NAMESPACES.ds, 'X509Certificate')).map(cert => ({
+                    usage: cert.parentNode.getAttribute('use') || 'signing',
+                    value: cert.textContent.replace(/\s/g, '')
+                }));
+
+                data[type] = section;
+            };
+
+            const spDescriptor = selectSingleNode(entityDescriptor, 'md:SPSSODescriptor');
+            const idpDescriptor = selectSingleNode(entityDescriptor, 'md:IDPSSODescriptor');
+
+            if(metadataType === 'sp' && spDescriptor) {
+                processSection(spDescriptor, 'sp');
+            }
+            if(metadataType === 'idp' && idpDescriptor) {
+                processSection(idpDescriptor, 'idp');
+            }
+
+            data.entity_id = entityDescriptor.getAttribute('entityID');
+            return data;
+        }
+
+        // Update Metadata Form Handler
+        metadataForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const metadataType = document.querySelector('input[name="metadataType"]:checked').value;
+            
+            // Existing file handling remains same until processing
+            
+            // Replace the data processing section with:
+            const data = processMetadata(entityDescriptor, metadataType);
+            displayResults(`Metadata Details (${metadataType.toUpperCase()})`, data, xmlString);
+        });
+
+        // Update Display Results for Metadata Sections
+        function displayResults(title, data, rawXml) {
+            // Existing code
+            
+            // Add metadata section handling
+            if(data.sp || data.idp) {
+                contentHtml += `<div class="metadata-sections">`;
+                
+                if(data.sp) {
+                    contentHtml += `<div class="metadata-section">`;
+                    contentHtml += `<h4>Service Provider (SP) Configuration</h4>`;
+                    contentHtml += renderMetadataSection(data.sp);
+                    contentHtml += `</div>`;
+                }
+
+                if(data.idp) {
+                    contentHtml += `<div class="metadata-section">`;
+                    contentHtml += `<h4>Identity Provider (IdP) Configuration</h4>`;
+                    contentHtml += renderMetadataSection(data.idp);
+                    contentHtml += `</div>`;
+                }
+
+                contentHtml += `</div>`;
+            }
+            
+            // Rest of display code
+        }
+
+        function renderMetadataSection(section) {
+            let html = `<ul class="result-list">`;
+            
+            html += `<li><strong>Descriptor Type:</strong> ${section.descriptor_type}</li>`;
+            
+            // Add endpoints
+            html += `<li><strong>Endpoints:</strong>`;
+            html += `<ul class="sub-list">`;
+            for(const [type, endpoints] of Object.entries(section.endpoints)) {
+                html += `<li><strong>${type.toUpperCase()}:</strong>`;
+                html += `<ul class="sub-list">`;
+                endpoints.forEach(endpoint => {
+                    html += `<li>${endpoint.Binding} - ${endpoint.Location}</li>`;
+                });
+                html += `</ul></li>`;
+            }
+            html += `</ul></li>`;
+            
+            // Add certificates
+            html += `<li><strong>Certificates:</strong>`;
+            html += `<ul class="sub-list">`;
+            section.certificates.forEach(cert => {
+                html += `<li>${cert.usage}: <span class="cert-display">${cert.value}</span></li>`;
+            });
+            html += `</ul></li>`;
+            
+            html += `</ul>`;
+            return html;
+        }
+    </script>
+</body>
+</html>

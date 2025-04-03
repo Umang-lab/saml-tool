@@ -1,0 +1,17 @@
+# System files
+.DS_Store
+Thumbs.db
+*.bak
+
+# Cache folders
+.cache/
+AppData/
+Local Settings/
+
+# Editor files
+.vscode/
+.idea/
+
+# OS files
+*.log
+*.tmp
